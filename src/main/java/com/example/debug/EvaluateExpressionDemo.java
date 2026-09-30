@@ -76,7 +76,7 @@ public class EvaluateExpressionDemo {
         double rate = 0.085;
         List<Integer> numbers = Arrays.asList(10, 20, 30, 40, 50);
 
-        // ===== 在下面这行设断点（第 66 行附近） =====
+        // ===== 在下面这行设断点 =====
         System.out.println("===== 场景1: 基础表达式 =====");   // <-- 断点停在此行
 
         /*
@@ -255,7 +255,10 @@ public class EvaluateExpressionDemo {
     //  场景 6 —— 在 Evaluate 中执行代码块 + 创建临时变量（高阶技巧）
     // ============================================================
     public static void demoAdvancedEval() {
-        List<String> rawData = Arrays.asList("a", "b", "c", "d", "e");
+        // ★ 注意：这里必须是 ArrayList，不能用 Arrays.asList
+        //   Arrays.asList 返回的是"定长不可变"视图，add/remove 会抛
+        //   UnsupportedOperationException。Evaluate 里报这个错时先检查这一点。
+        List<String> rawData = new ArrayList<>(Arrays.asList("a", "b", "c", "d", "e"));
 
         System.out.println("===== 场景6: 高级技巧 =====");   // <-- 在此行设断点
 
@@ -285,7 +288,8 @@ public class EvaluateExpressionDemo {
          *
          * 【练习 6.5】调用静态工具方法
          *   String.join(" -> ", rawData)
-         *   Collections.reverse(Arrays.asList(1,2,3,4,5))
+         *   new ArrayList<>(Arrays.asList(1,2,3,4,5))      ← 要反转得先复制成可变 List
+         *   java.util.Collections.reverse(new ArrayList<>(Arrays.asList(1,2,3,4,5)))
          */
 
         // 技巧：Evaluate 窗口可以留空按回车，重复上一次的表达式
@@ -365,8 +369,95 @@ public class EvaluateExpressionDemo {
     }
 
 
+// ============================================================
+    //  场景 8 —— 反射：访问私有成员（Evaluate 的高级用法）
+    // ============================================================
+    static class SecretBox {
+        private String token = "s3cr3t-token";
+        private int retryCount = 3;
+
+        private String decrypt(String input) {
+            return new StringBuilder(input).reverse().toString();
+        }
+
+        @Override
+        public String toString() {
+            return "SecretBox{token='***', retryCount=" + retryCount + '}';
+        }
+    }
+
+    public static void demoReflection() {
+        SecretBox box = new SecretBox();
+
+        System.out.println("===== 场景8: 反射访问私有成员 =====");   // <-- 断点停在此行
+
+        /*
+         * 【练习 8.1】读私有字段
+         *   box.getClass().getDeclaredField("token")
+         *   box.getClass().getDeclaredField("token").setAccessible(true)
+         *   box.getClass().getDeclaredField("token").setAccessible(true).get(box)
+         *   ★ Evaluate 支持分号多语句，每一行的结果都能看到。
+         *
+         * 【练习 8.2】写私有字段
+         *   box.getClass().getDeclaredField("retryCount").setAccessible(true).setInt(box, 99)
+         *   ★ 用途：模拟"某个第三方库的内部状态被改坏了"，
+         *   不需要改代码就能验证自己的假设。
+         *
+         * 【练习 8.3】调用私有方法
+         *   var m = box.getClass().getDeclaredMethod("decrypt", String.class)
+         *   m.setAccessible(true)
+         *   m.invoke(box, "abc")
+         *   ★ 注意要写全限定名（java.lang.reflect.Method），
+         *   Evaluate 里不能 import，用 var 就省事了。
+         *
+         * 【练习 8.4】看运行期真实类型
+         *   box.getClass().getName()
+         *   box.getClass().getSuperclass().getName()
+         *   java.util.Arrays.toString(box.getClass().getDeclaredFields())
+         *   ★ 在 AOP / 代理 / MyBatis Mapper 这类场景里，
+         *   这几行能直接告诉你"运行时到底是不是你以为的那个类"。
+         */
+    }
+
+
+    // ============================================================
+    //  场景 9 —— 数组操作 + 打印当前调用栈
+    // ============================================================
+    public static void demoArrayAndStack() {
+        int[] scores = new int[]{90, 85, 100, 60};
+        char[] letters = {'a', 'b', 'c'};
+
+        System.out.println("===== 场景9: 数组与调用栈 =====");   // <-- 断点停在此行
+
+        /*
+         * 【练习 9.1】数组基础
+         *   scores.length
+         *   scores[0]
+         *   scores[0] = 0                  ← 改元素，F9 后看下一行输出
+         *   java.util.Arrays.toString(scores)
+         *   java.util.Arrays.stream(scores).max()
+         *   scores[10]                     ← 故意越界，看 Evaluate 里的异常提示
+         *
+         * 【练习 9.2】char[] 与 String 的互转
+         *   new String(letters)
+         *   java.util.Arrays.toString(letters)
+         *   ★ 对比 test.java 里的 copyOfRange 写法：
+         *     Arrays.toString(char[]) 会带 [] 和逗号，
+         *     new String(char[]) 才是你要的 "ab"。
+         *
+         * 【练习 9.3】打印当前调用栈（不用切 Frames 面板）
+         *   Thread.currentThread().getStackTrace().length
+         *   java.util.Arrays.stream(Thread.currentThread().getStackTrace())
+         *       .map(StackTraceElement::getMethodName).collect(java.util.stream.Collectors.toList())
+         *
+         * ★ 在复杂的 lambda / 递归里，这个表达式能直接告诉你"我在第几层、被谁调的"，
+         *   比手点 Frames 面板快得多。
+         */
+    }
+
+
     public static void main(String[] args) {
-        // 按顺序执行各个场景
+        // 按顺序执行各个场景；单练某一个时把其它行注释掉即可
         demoBasicExpressions();
         demoObjectFieldAccess();
         demoCollectionStream();
@@ -374,6 +465,8 @@ public class EvaluateExpressionDemo {
         demoApiResponseDebug();
         demoAdvancedEval();
         getActiveUserEmails("test");
+        demoReflection();
+        demoArrayAndStack();
 
         System.out.println("\n全部执行完毕。按场景依次设断点练习就好。");
     }
