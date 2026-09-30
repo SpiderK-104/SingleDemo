@@ -4,7 +4,7 @@ import java.lang.reflect.Array;
 import java.util.Arrays;
 
 public class test {
-    static void main() {
+    public static void main(String[] args) {
         char []arr={'a','b','c','d'};
 
         String cp = Arrays.toString(Arrays.copyOfRange(arr,0,2));
