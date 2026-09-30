@@ -18,11 +18,11 @@ public class BreakpointTypesDemo {
     //  场景 1 —— 行断点 + 挂起策略（Suspend: Thread / All）
     // ============================================================
     public static void scenario1LineBreakpoint() {
+        System.out.println("这是场景 1：行断点 + 挂起策略（Suspend: Thread / All）");
         for (int i = 1; i <= 5; i++) {
             System.out.println("行断点命中第 " + i + " 次");   // <-- 在此行设行断点
         }
     }
-
     /*
      * 【练习 1.1】普通行断点
      *   在 println 行右键 → 断点变实心红点，F9 单步 / 再按 F9 直接跑到下一个断点。
@@ -93,6 +93,18 @@ public class BreakpointTypesDemo {
      *
      * ★ 另一个用法：把命中率调成 equal to 1，就是"只看第一次进入"。
      */
+
+    public static void scenario4Breakpoint() {
+        int a = 10;
+        int b = a + 20;
+        System.out.println("a+b=" + b);
+    }
+
+
+    public static void exceptionBreakpoint() {
+        Object o = null;
+        System.out.println(o.toString());
+    }
 
 
     // ============================================================
@@ -177,27 +189,48 @@ public class BreakpointTypesDemo {
 
 
     // ============================================================
-    //  场景 6 —— 字段断点（Field Breakpoint）—— 排查"谁改了这个变量"
+    //  场景 6 —— 字段观察点（Field Watchpoint）—— 排查"谁改了这个变量"
     // ============================================================
     static class Account {
-        String status = "INIT";     // <-- 光标放这里 → Add Field Breakpoint
+        // ↓ 光标放在这个字段声明上 → 右键 → Add Field Watchpoint
+        //   小眼睛图标只是"标记位置"，程序不会停在声明这一行
+        String status = "INIT";
         long balance;
 
         void setStatus(String next) {
-            this.status = next;
+            this.status = next;      // ← Field modification 会停在这一行（真正写入的地方）
         }
 
         void deduct(long amount) {
-            balance -= amount;
+            balance -= amount;       // ← 复合赋值同样是写，会命中
+        }
+
+        boolean isActive() {
+            return "INIT".equals(status);   // ← Field access 会停在这一行（真正读取的地方）
         }
     }
 
-    public static void scenario6FieldBreakpoint() {
+    // 第二个类：故意写成别的类来赋值，用来看清"停在哪里、栈是谁"
+    static class AccountService {
+        static void reset(Account acc) {
+            acc.status = "RESET_BY_SERVICE";   // ← 观察点会停在这里，栈顶是 reset()
+        }
+
+        static String describe(Account acc) {
+            return "status=" + acc.status;     // ← 访问观察点会停在这里
+        }
+    }
+
+    public static void scenario6FieldWatchpoint() {
         Account acc = new Account();
 
-        acc.setStatus("VERIFIED");
-        acc.deduct(100);
-        acc.setStatus("FROZEN");
+        acc.setStatus("VERIFIED");       // 写入 → 停在 Account.setStatus 第 3 行
+        System.out.println(AccountService.describe(acc));   // 读取 → 停在 describe 第 2 行
+
+        AccountService.reset(acc);       // 写入 → 停在 AccountService.reset 第 2 行
+        System.out.println(acc.isActive());   // 读取 → 停在 isActive 第 2 行
+
+        acc.deduct(100);                 // 写入 balance
         acc.deduct(50);
         acc.setStatus("CLOSED");
 
@@ -205,19 +238,49 @@ public class BreakpointTypesDemo {
     }
 
     /*
-     * 【操作】光标放在字段声明 status 上 → 右键 → Add Field Breakpoint
-     *   Field access       → 每次读或写都停（非常吵，一般不用）
-     *   Field modification → 只有写的时候停
+     * ┌────────────────────────────────────────────────────────────┐
+     * │ ★ Field Watchpoint 和行断点完全不是一回事，别混：            │
+     * │                                                            │
+     * │   行断点    → 停在你在 gutter 上点的那一行                  │
+     * │   Field Watchpoint → 停在"发生读/写的那个业务代码行"        │
+     * │                                                            │
+     * │   眼睛图标画在字段声明上，那只是"这字段被盯上了"的意思。      │
+     * │   真正暂停的位置是赋值方 / 读取方的源码行，                    │
+     * │   甚至可能是第三方 jar 里的代码（那时会提示源码未附加）。      │
+     * └────────────────────────────────────────────────────────────┘
      *
-     * ★ 这是最强的一招：代码里有 5 个地方给 status 赋值，
-     *   手动逐个下断点要改 5 次代码；字段断点一次搞定，
-     *   而且任何地方（包括第三方代码）改它都会停。
+     * 【操作步骤】
+     *   1) 光标放在 status 的字段声明上（不是语句行）
+     *   2) 右键 → Add Field Watchpoint...（菜单名是 Watchpoint，不是 Breakpoint）
+     *   3) 弹窗里三选一：
+     *        Field access              读或写都停
+     *        Field modification        只有写才停   ← 排查"谁改的"用这个
+     *        Any access and modification
+     *   4) 确定。gutter 上出现的是红色小眼睛，不是红圆点、也不是菱形。
      *
-     * ★ 实战价值：定位"这个值怎么变成 null / -1 / 2026-01-01 的"
-     *   —— 有字段断点就不用再猜了。
+     * 【本场景观察重点】
+     *   - 在 status 上加 Field modification，按 F9 走一遍，
+     *     每次暂停的行号都不同：setStatus → reset → setStatus，
+     *     而 Account 的字段声明行一次都没停过。
+     *   - 每次停住看 Frames 面板：栈顶就是那个写入方
+     *     （Account.setStatus / AccountService.reset），
+     *     这就是"谁改的"的答案。
+     *   - Alt+F8 输入 `acc.status` 看当前值，
+     *     `Thread.currentThread().getName()` 确认是哪个线程写的。
+     *   - 换成 Field access 后会多停在 describe / isActive 里（纯读取的位置）。
      *
-     * ★ 补充：balance 也试一次字段断点，观察 deduct 里的 balance -= amount
-     *   是否会命中（复合赋值也写字段，会命中）。
+     * ★ 这是排查"这个值怎么变成 null / -1 / 异常时间戳"的终极手段：
+     *   不用在几十个赋值点逐个下断点，也不用先猜代码路径。
+     *
+     * ★ 和方法断点的分工
+     *   方法断点（菱形）：回答"谁调了这个方法 / 调了几次"
+     *   字段观察点（眼睛）：回答"谁改了这个值 / 谁读了这个值"
+     *
+     * ★ 已知限制
+     *   - 读观察点非常吵，for 循环里读一次就停一次，别在热路径上用
+     *   - static 字段同样可以加，会命中所有线程的所有访问
+     *   - 字段所在类如果被多个类共享，停住时务必看 Frames 确认是哪个实例
+     *   - Suspend: All 时线程越多停得越频繁，注意别把程序拖到超时
      */
 
 
@@ -297,6 +360,12 @@ public class BreakpointTypesDemo {
      *   1. 断点是不是实心的？灰色 = 被 disabled（Mute Breaks 或点了 Mute 按钮）
      *      Alt+R → View Breakpoints 看左侧有没有勾选框，勾掉 muted 的即可。
      *
+     *   1.5 图标认错也会导致误判：
+     *      红圆点 = 行断点（停在点的那一行）
+     *      菱形   = 方法断点（停在方法入口/出口）
+     *      眼睛   = 字段观察点（停在真正读/写的那一行，不是声明行）
+     *      ⚡      = 异常断点（在 View Breakpoints 面板里，不在 gutter）
+     *
      *   2. 是不是用 Run（Shift+F10）跑的而不是 Debug（Shift+F9）？
      *      普通 Run 根本不挂调试器，断点当然不会停。
      *
@@ -362,6 +431,10 @@ public class BreakpointTypesDemo {
 
 
     public static void main(String[] args) {
+//        scenario4Breakpoint();
+//        exceptionBreakpoint();   ← 这行 NPE 不被捕获，跑它会直接终止整个 main
+//        Debug 时想练 NPE 异常断点就取消上面两行的注释单独跑
+
         System.out.println("===== 场景1: 行断点与挂起策略 =====");
         scenario1LineBreakpoint();
 
@@ -377,8 +450,8 @@ public class BreakpointTypesDemo {
         System.out.println("\n===== 场景5: 方法断点 =====");
         scenario5MethodBreakpoint();
 
-        System.out.println("\n===== 场景6: 字段断点 =====");
-        scenario6FieldBreakpoint();
+        System.out.println("\n===== 场景6: 字段观察点 Field Watchpoint =====");
+        scenario6FieldWatchpoint();
 
         System.out.println("\n===== 场景7: 异常断点 =====");
         scenario7ExceptionBreakpoint();
